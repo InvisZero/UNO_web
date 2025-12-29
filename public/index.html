@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>UNO Online</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+    li {
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>UNO Online</h1>
+
+  <!-- Join section -->
+  <input id="name" placeholder="Your name" />
+  <input id="room" placeholder="Room code" />
+  <button id="joinBtn" onclick="join()">Join Room</button>
+
+  <!-- Host only -->
+  <button id="startBtn" onclick="startGame()" style="display:none;">
+    Start Game
+  </button>
+
+  <!-- Player list -->
+  <h3>Players:</h3>
+  <ul id="players"></ul>
+
+  <!-- Player hand -->
+  <h3>Your Cards:</h3>
+  <ul id="hand"></ul>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // --------------------
+    // Socket setup
+    // --------------------
+    const socket = io();
+    let currentRoom = "";
+    let myId = "";
+
+    socket.on("connect", () => {
+      myId = socket.id;
+    });
+
+    // --------------------
+    // Server feedback
+    // --------------------
+    socket.on("alreadyJoined", () => {
+      alert("You have already joined this room.");
+    });
+
+    socket.on("roomFull", () => {
+      alert("Room is full (max 6 players).");
+    });
+
+    socket.on("notEnoughPlayers", () => {
+      alert("At least 2 players are required to start the game.");
+    });
+
+    socket.on("gameAlreadyStarted", () => {
+      alert("Game already started. You cannot join.");
+    });
+
+    socket.on("gameStarted", () => {
+  alert("Game Started!");
+
+  document.getElementById("startBtn").style.display = "none";
+
+  const joinBtn = document.getElementById("joinBtn");
+  if (joinBtn) joinBtn.style.display = "none";
+
+  document.getElementById("name").disabled = true;
+  document.getElementById("room").disabled = true;
+});
+
+
+    // --------------------
+    // Player list
+    // --------------------
+    socket.on("playerList", (players) => {
+      const ul = document.getElementById("players");
+      ul.innerHTML = "";
+
+      let amHost = false;
+
+      players.forEach(p => {
+        const li = document.createElement("li");
+        li.innerText = p.name + (p.host ? " (Host)" : "");
+        ul.appendChild(li);
+
+        if (p.id === myId && p.host) {
+          amHost = true;
+        }
+      });
+
+      const startBtn = document.getElementById("startBtn");
+      startBtn.style.display = amHost ? "block" : "none";
+      startBtn.disabled = players.length < 2;
+    });
+
+    // --------------------
+    // Your cards (TEXT MODE)
+    // --------------------
+    socket.on("yourHand", (hand) => {
+      const ul = document.getElementById("hand");
+      ul.innerHTML = "";
+
+      hand.forEach(card => {
+        const li = document.createElement("li");
+        li.innerText = `${card.color.toUpperCase()} ${card.value.toUpperCase()}`;
+        ul.appendChild(li);
+      });
+    });
+
+    // --------------------
+    // Actions
+    // --------------------
+    function join() {
+      const name = document.getElementById("name").value;
+      const room = document.getElementById("room").value;
+      if (!name || !room) return;
+
+      currentRoom = room;
+      socket.emit("joinRoom", room, name);
+      document.getElementById("joinBtn").style.display = "none";
+      document.getElementById("name").disabled = true;
+      document.getElementById("room").disabled = true;
+
+    }
+
+    function startGame() {
+      socket.emit("startGame", currentRoom);
+    }
+  </script>
+
+</body>
+</html>
