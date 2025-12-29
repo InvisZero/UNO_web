@@ -50,6 +50,21 @@ function dealCards(room, count = 7) {
   });
 }
 
+function drawFirstCard(room) {
+  let card;
+  do {
+    card = room.deck.pop();
+  } while (
+    card.color === "wild" ||
+    card.value === "skip" ||
+    card.value === "reverse" ||
+    card.value === "draw2"
+  );
+
+  room.discardPile = [card];
+  return card;
+}
+
 // --------------------
 // Socket logic
 // --------------------
@@ -62,7 +77,8 @@ io.on("connection", (socket) => {
       rooms[roomId] = {
         players: [],
         started: false,
-        deck: []
+        deck: [],
+        discardPile: []
       };
     }
 
@@ -93,8 +109,10 @@ io.on("connection", (socket) => {
     });
 
     socket.join(roomId);
-    io.to(roomId).emit("playerList", room.players);
+
     console.log(`Room ${roomId}: ${playerName} joined (${room.players.length}/6)`);
+
+    io.to(roomId).emit("playerList", room.players);
   });
 
   // START GAME
@@ -115,35 +133,35 @@ io.on("connection", (socket) => {
 
     dealCards(room);
 
-    // Send PRIVATE hands
+    console.log(`--- DEALING CARDS ---`);
+    room.players.forEach(p => {
+      console.log(`${p.name} received ${p.hand.length} cards`);
+    });
+
+    // Send private hands
     room.players.forEach(player => {
       io.to(player.id).emit("yourHand", player.hand);
     });
 
-    // Send PUBLIC state
+    // Draw first discard card
+    const firstCard = drawFirstCard(room);
+
+    console.log(`First card: ${firstCard.color} ${firstCard.value}`);
+    console.log(`Deck left: ${room.deck.length}`);
+    console.log(`--------------------`);
+
+    // Public game state
     io.to(roomId).emit("gameState", {
       players: room.players.map(p => ({
         id: p.id,
         name: p.name,
         handCount: p.hand.length,
         host: p.host
-      }))
+      })),
+      topCard: firstCard
     });
-    console.log(`--- DEALING CARDS ---`);
-room.players.forEach(p => {
-  console.log(
-    `${p.name} received ${p.hand.length} cards`
-  );
-});
-console.log(`Deck remaining: ${room.deck.length}`);
-console.log(`---------------------`);
 
-
-    console.log(
-      `Game started in room ${roomId} | Players: ${room.players.length} | Deck left: ${room.deck.length}`
-    );
-    
-
+    io.to(roomId).emit("firstCard", firstCard);
     io.to(roomId).emit("gameStarted");
   });
 });
