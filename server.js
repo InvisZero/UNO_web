@@ -42,10 +42,10 @@ function shuffle(deck) {
 }
 
 function dealCards(room, count = 7) {
-  room.players.forEach(player => {
-    player.hand = [];
+  room.players.forEach(p => {
+    p.hand = [];
     for (let i = 0; i < count; i++) {
-      player.hand.push(room.deck.pop());
+      p.hand.push(room.deck.pop());
     }
   });
 }
@@ -65,20 +65,35 @@ function drawFirstCard(room) {
   return card;
 }
 
+function emitGameState(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+
+  io.to(roomId).emit("gameState", {
+    players: room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      handCount: p.hand.length,
+      host: p.host
+    })),
+    currentTurnId: room.players[room.currentTurn].id
+  });
+}
+
 // --------------------
 // Socket logic
 // --------------------
 io.on("connection", (socket) => {
   console.log("Player connected:", socket.id);
 
-  // JOIN ROOM
   socket.on("joinRoom", (roomId, playerName) => {
     if (!rooms[roomId]) {
       rooms[roomId] = {
         players: [],
         started: false,
         deck: [],
-        discardPile: []
+        discardPile: [],
+        currentTurn: 0
       };
     }
 
@@ -108,14 +123,15 @@ io.on("connection", (socket) => {
       hand: []
     });
 
+    console.log(
+  `👤 Player joined | Room: ${roomId} | Name: ${playerName} | Players: ${room.players.length}`
+    );
+
+
     socket.join(roomId);
-
-    console.log(`Room ${roomId}: ${playerName} joined (${room.players.length}/6)`);
-
     io.to(roomId).emit("playerList", room.players);
   });
 
-  // START GAME
   socket.on("startGame", (roomId) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -131,38 +147,35 @@ io.on("connection", (socket) => {
     room.started = true;
     room.deck = createDeck();
 
+    console.log(
+  `🎮 Game started | Room: ${roomId} | Players: ${room.players.length}`
+   );
+
     dealCards(room);
 
-    console.log(`--- DEALING CARDS ---`);
+    console.log(
+  `🃏Cards dealt | Room: ${roomId} | Deck remaining: ${room.deck.length}`
+  );
+
     room.players.forEach(p => {
-      console.log(`${p.name} received ${p.hand.length} cards`);
+      io.to(p.id).emit("yourHand", p.hand);
     });
 
-    // Send private hands
-    room.players.forEach(player => {
-      io.to(player.id).emit("yourHand", player.hand);
-    });
-
-    // Draw first discard card
     const firstCard = drawFirstCard(room);
 
-    console.log(`First card: ${firstCard.color} ${firstCard.value}`);
-    console.log(`Deck left: ${room.deck.length}`);
-    console.log(`--------------------`);
+    console.log(
+  `📤 First card: ${firstCard.color} ${firstCard.value} | Deck remaining: ${room.deck.length}`
+   );
 
-    // Public game state
-    io.to(roomId).emit("gameState", {
-      players: room.players.map(p => ({
-        id: p.id,
-        name: p.name,
-        handCount: p.hand.length,
-        host: p.host
-      })),
-      topCard: firstCard
-    });
+    room.currentTurn = Math.floor(Math.random() * room.players.length);
 
     io.to(roomId).emit("firstCard", firstCard);
     io.to(roomId).emit("gameStarted");
+    io.to(roomId).emit("turnUpdate", {
+      currentPlayerId: room.players[room.currentTurn].id
+    });
+
+    emitGameState(roomId);
   });
 });
 

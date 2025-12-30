@@ -3,120 +3,192 @@
 <head>
   <title>UNO Online</title>
   <style>
-    body { font-family: Arial, sans-serif; }
-    li { margin: 4px 0; }
+    * { user-select: none; }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: white;
+      padding: 20px;
+    }
+
+    .hand {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .card {
+      width: 80px;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+
+    .card:hover {
+      transform: translateY(-12px) scale(1.05);
+    }
+
+    .discard {
+      width: 110px;
+    }
+
+    .opponents {
+      display: flex;
+      gap: 20px;
+      margin: 20px 0;
+    }
+
+    .opponent {
+      text-align: center;
+    }
   </style>
 </head>
 <body>
 
-  <h1>UNO Online</h1>
+<h1>UNO Online</h1>
 
-  <!-- Join -->
-  <input id="name" placeholder="Your name" />
-  <input id="room" placeholder="Room code" />
-  <button id="joinBtn" onclick="join()">Join Room</button>
+<input id="name" placeholder="Your name">
+<input id="room" placeholder="Room code">
+<button id="joinBtn" onclick="join()">Join Room</button>
 
-  <!-- Host -->
-  <button id="startBtn" onclick="startGame()" style="display:none;">
-    Start Game
-  </button>
+<button id="startBtn" onclick="startGame()" style="display:none;">
+  Start Game
+</button>
 
-  <!-- Players -->
-  <h3>Players:</h3>
-  <ul id="players"></ul>
+<h3>Players:</h3>
+<ul id="players"></ul>
 
-  <!-- Discard pile -->
-  <h3>Discard Pile (Top Card):</h3>
-  <p id="discard">Waiting…</p>
+<h3 id="turnStatus">Waiting…</h3>
 
-  <!-- Hand -->
-  <h3>Your Cards:</h3>
-  <ul id="hand"></ul>
+<h3>Opponents</h3>
+<div id="opponents" class="opponents"></div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
-    let currentRoom = "";
-    let myId = "";
+<h3>Discard Pile</h3>
+<img id="discard" class="discard" src="assets/cards/uno_cover.png">
 
-    socket.on("connect", () => {
-      myId = socket.id;
-    });
+<h3>Your Cards</h3>
+<div id="hand" class="hand"></div>
 
-    // Alerts
-    socket.on("alreadyJoined", () => alert("You already joined this room."));
-    socket.on("roomFull", () => alert("Room is full."));
-    socket.on("notEnoughPlayers", () => alert("Need at least 2 players."));
-    socket.on("gameAlreadyStarted", () => alert("Game already started."));
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let currentRoom = "";
+let myId = "";
+let isMyTurn = false;
 
-    socket.on("gameStarted", () => {
-      alert("Game Started!");
-      document.getElementById("startBtn").style.display = "none";
-      document.getElementById("joinBtn").style.display = "none";
-      document.getElementById("name").disabled = true;
-      document.getElementById("room").disabled = true;
-    });
+// --------------------
+function cardImage(card) {
+  if (card.color === "wild") {
+    return `assets/cards/${card.value}.png`;
+  }
+  return `assets/cards/${card.color}_${card.value}.png`;
+}
 
-    // Player list
-    socket.on("playerList", (players) => {
-      const ul = document.getElementById("players");
-      ul.innerHTML = "";
+// --------------------
+socket.on("connect", () => {
+  myId = socket.id;
+});
 
-      let amHost = false;
+// Alerts
+socket.on("roomFull", () => alert("Room full"));
+socket.on("alreadyJoined", () => alert("Already joined"));
+socket.on("notEnoughPlayers", () => alert("Need at least 2 players"));
+socket.on("gameAlreadyStarted", () => alert("Game already started"));
 
-      players.forEach(p => {
-        const li = document.createElement("li");
-        li.innerText = p.name + (p.host ? " (Host)" : "");
-        ul.appendChild(li);
+socket.on("playerList", (players) => {
+  const ul = document.getElementById("players");
+  ul.innerHTML = "";
 
-        if (p.id === myId && p.host) amHost = true;
-      });
+  let amHost = false;
 
-      const startBtn = document.getElementById("startBtn");
-      startBtn.style.display = amHost ? "block" : "none";
-      startBtn.disabled = players.length < 2;
-    });
+  players.forEach(p => {
+    const li = document.createElement("li");
+    li.innerText = p.name + (p.host ? " (Host)" : "");
+    ul.appendChild(li);
+    if (p.id === myId && p.host) amHost = true;
+  });
 
-    // Hand
-    socket.on("yourHand", (hand) => {
-      const ul = document.getElementById("hand");
-      ul.innerHTML = "";
+  document.getElementById("startBtn").style.display =
+    amHost ? "block" : "none";
+});
 
-      hand.forEach(card => {
-        const li = document.createElement("li");
-        li.innerText = `${card.color.toUpperCase()} ${card.value.toUpperCase()}`;
-        ul.appendChild(li);
-      });
-    });
+socket.on("gameStarted", () => {
+  document.getElementById("joinBtn").style.display = "none";
+  document.getElementById("startBtn").style.display = "none";
+});
 
-    // Discard pile
-    socket.on("firstCard", (card) => {
-      document.getElementById("discard").innerText =
-        card.color.toUpperCase() + " " + card.value.toUpperCase();
-    });
+socket.on("firstCard", (card) => {
+  document.getElementById("discard").src = cardImage(card);
+});
 
-    socket.on("gameState", (state) => {
-      if (state.topCard) {
-        document.getElementById("discard").innerText =
-          state.topCard.color.toUpperCase() + " " + state.topCard.value.toUpperCase();
+// TURN SYSTEM
+socket.on("turnUpdate", ({ currentPlayerId }) => {
+  if (currentPlayerId === myId) {
+    isMyTurn = true;
+    document.getElementById("turnStatus").innerText = "🟢 Your turn";
+  } else {
+    isMyTurn = false;
+    document.getElementById("turnStatus").innerText = "⏳ Opponent’s turn";
+  }
+});
+
+// PUBLIC GAME STATE (opponent cards)
+socket.on("gameState", (state) => {
+  const oppDiv = document.getElementById("opponents");
+  oppDiv.innerHTML = "";
+
+  state.players.forEach(p => {
+    if (p.id === myId) return;
+
+    const d = document.createElement("div");
+    d.className = "opponent";
+    d.innerHTML = `
+      <div>${p.name}</div>
+      <img src="assets/cards/uno_cover.png" width="60">
+      <div>${p.handCount} cards</div>
+    `;
+    oppDiv.appendChild(d);
+  });
+});
+
+// YOUR HAND
+socket.on("yourHand", (hand) => {
+  const handDiv = document.getElementById("hand");
+  handDiv.innerHTML = "";
+
+  hand.forEach(card => {
+    const img = document.createElement("img");
+    img.src = cardImage(card);
+    img.className = "card";
+
+    img.onclick = () => {
+      if (!isMyTurn) {
+        alert("Not your turn");
+        return;
       }
-    });
+      console.log("Play card:", card);
+      // Step 13
+    };
 
-    // Actions
-    function join() {
-      const name = document.getElementById("name").value;
-      const room = document.getElementById("room").value;
-      if (!name || !room) return;
+    handDiv.appendChild(img);
+  });
+});
 
-      currentRoom = room;
-      socket.emit("joinRoom", room, name);
-      document.getElementById("joinBtn").style.display = "none";
-    }
+// ACTIONS
+function join() {
+  const name = document.getElementById("name").value;
+  const room = document.getElementById("room").value;
+  if (!name || !room) return;
 
-    function startGame() {
-      socket.emit("startGame", currentRoom);
-    }
-  </script>
+  currentRoom = room;
+  socket.emit("joinRoom", room, name);
+  document.getElementById("joinBtn").style.display = "none";
+}
+
+function startGame() {
+  socket.emit("startGame", currentRoom);
+}
+</script>
 
 </body>
 </html>
