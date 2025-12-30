@@ -154,7 +154,7 @@ io.on("connection", (socket) => {
     dealCards(room);
 
     console.log(
-  `🃏Cards dealt | Room: ${roomId} | Deck remaining: ${room.deck.length}`
+  `🀆 Cards dealt | Room: ${roomId} | Deck remaining: ${room.deck.length}`
   );
 
     room.players.forEach(p => {
